@@ -120,20 +120,9 @@ func CreateFromReader(node *bcgo.Node, listener bcgo.MiningListener, uri string,
 	if uri != "" && reader != nil {
 		// TODO truncate uri to remove file:///Users/foobar/...
 		log.Println(uri)
-		// Create fileId from uri
-		fileHash, err := WriteProto(node, listener, p, &Path{
-			Path: strings.Split(uri, string(os.PathSeparator)),
-		})
-		if err != nil {
-			return nil, err
-		}
-		// Create Lab-File-<id> Chain
-		file := OpenFileChannel(base64.RawURLEncoding.EncodeToString(fileHash))
-		node.AddChannel(file)
-		if err := ReaderToDeltas(reader, MAX_DELTA_LENGTH, func(d *Delta) error {
-			_, err := WriteProto(node, listener, file, d)
-			return err
-		}); err != nil {
+		path := strings.Split(uri, string(os.PathSeparator))
+		log.Println(path)
+		if _, _, err := CreatePathFromReader(node, listener, p, path, reader); err != nil {
 			return nil, err
 		}
 	}
@@ -200,6 +189,35 @@ func CreateFromPaths(node *bcgo.Node, listener bcgo.MiningListener, paths ...str
 		//Draw: d,
 		Path: p,
 	}, nil
+}
+
+func CreatePath(node *bcgo.Node, listener bcgo.MiningListener, channel *bcgo.Channel, path []string) (string, *bcgo.Channel, error) {
+	// Create fileId from path
+	fileHash, err := WriteProto(node, listener, channel, &Path{
+		Path: path,
+	})
+	if err != nil {
+		return "", nil, err
+	}
+	// Create Lab-File-<id> Chain
+	id := base64.RawURLEncoding.EncodeToString(fileHash)
+	file := OpenFileChannel(id)
+	node.AddChannel(file)
+	return id, file, nil
+}
+
+func CreatePathFromReader(node *bcgo.Node, listener bcgo.MiningListener, channel *bcgo.Channel, path []string, reader io.ReadCloser) (string, *bcgo.Channel, error) {
+	id, file, err := CreatePath(node, listener, channel, path)
+	if err != nil {
+		return "", nil, err
+	}
+	if err := ReaderToDeltas(reader, MAX_DELTA_LENGTH, func(d *Delta) error {
+		_, err := WriteProto(node, listener, file, d)
+		return err
+	}); err != nil {
+		return "", nil, err
+	}
+	return id, file, nil
 }
 
 func Open(node *bcgo.Node, experimentId string) (*Experiment, error) {
